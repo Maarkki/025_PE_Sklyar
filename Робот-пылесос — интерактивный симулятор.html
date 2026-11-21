@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Робот-пылесос</title>
+<style>
+:root{--bg:#eceef2;--card:#fff;--tx:#1a1f2b;--mu:#667085;--ln:#c4cad6;--ac:#2563eb;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111317;--card:#1b1f2a;--tx:#e8ebf2;--mu:#98a2b8;--ln:#3a4254;--ac:#5b9bff}}
+:root[data-theme="dark"]{--bg:#111317;--card:#1b1f2a;--tx:#e8ebf2;--mu:#98a2b8;--ln:#3a4254;--ac:#5b9bff}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:14px/1.4 "Segoe UI",system-ui,Arial,sans-serif;padding:12px}
+h1{font-size:18px;margin:0 0 10px}h2{font-size:13px;margin:0 0 8px;color:var(--mu);font-weight:600}
+.wrap{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(290px,1fr);gap:12px;max-width:1300px;margin:auto}
+@media(max-width:860px){.wrap{grid-template-columns:1fr}}
+.c{background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid var(--ln)}
+canvas{width:100%;height:auto;display:block;border-radius:8px}
+.lcd{background:#0d2218;border:4px solid #2b3340;border-radius:12px;padding:12px 14px;color:#7dffb0;font-family:"Courier New",monospace;min-height:150px;box-shadow:inset 0 0 18px #000}
+.lcd.off{background:#0a0c0d;color:#222}.lcd.er{color:#ff7a70;background:#2a0f0d}
+.lcd .t{font-size:20px;font-weight:700;letter-spacing:.5px}.lcd .s{font-size:13px;margin-top:4px;opacity:.9}
+.lcd .b{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px}
+.lcd .bt{flex:1;height:12px;border:2px solid currentColor;border-radius:3px;padding:1px}.lcd .bt i{display:block;height:100%;background:currentColor}
+.lcd .f{margin-top:8px;font-size:12px;min-height:16px;color:#ffd166}
+.lamp{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--ln);vertical-align:middle;margin-right:6px}
+.lamp.b{background:#f59e0b;box-shadow:0 0 8px #f59e0b}
+.rc{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#232936;padding:12px;border-radius:18px}
+button{font:inherit;padding:10px 6px;border-radius:10px;border:0;background:#3a4357;color:#fff;cursor:pointer}
+button:hover:not(:disabled){background:#4b5670}button:disabled{opacity:.35;cursor:not-allowed}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.rc .g{background:#1f8f4e}.rc .r{background:#b4443b}.rc .y{background:#b7832a}.rc .w{grid-column:span 2}
+.sim button{background:transparent;color:var(--tx);border:1px solid var(--ln);padding:6px 10px;margin:0 6px 6px 0}
+.sim button:hover:not(:disabled){border-color:var(--ac);background:transparent}
+label{display:flex;gap:6px;align-items:center;margin:5px 0;font-size:13px}
+label input[type=range]{flex:1}
+#log{max-height:190px;overflow:auto;font-size:12px;color:var(--mu)}#log div{padding:2px 0}
+.leg{font-size:12px;color:var(--mu);margin-top:6px}
+</style></head><body>
+<h1>Робот-пылесос</h1>
+<div class="wrap"><div>
+<div class="c"><canvas id="cv" width="640" height="400" aria-label="Комната с роботом"></canvas>
+<div class="leg">Точки на полу — грязь. Робот объезжает мебель, убирает по алгоритму и сам едет на станцию (левый нижний угол).</div></div>
+<div class="c"><h2>Журнал</h2><div id="log"></div></div></div>
+<div>
+<div class="c"><h2>Экранчик робота</h2><div class="lcd" id="lcd"></div>
+<div style="margin-top:8px"><span class="lamp" id="lamp"></span><span id="snd">Сигнал: —</span></div></div>
+<div class="c"><h2>Пульт</h2><div class="rc" id="rc"></div><div class="leg" id="hint"></div></div>
+<div class="c sim"><h2>Имитация событий и условий</h2>
+<button id="e1">Экстренная остановка</button><button id="e2">Критическая ошибка</button>
+<label><input type="checkbox" id="k1">Неисправность при диагностике</label>
+<label><input type="checkbox" id="k2">Препятствие на пути</label>
+<label><input type="checkbox" id="k3" checked>Станция доступна</label>
+<label>Заряд <input type="range" id="k4" min="0" max="100" value="80"><span id="v4" style="width:34px"></span></label>
+<label>Контейнер <input type="range" id="k5" min="0" max="100" value="20"><span id="v5" style="width:34px"></span></label>
+<label><input type="checkbox" id="sound" checked>Звук сигналов</label></div>
+</div></div>
+<script>
+const $=i=>document.getElementById(i);
+const cv=$('cv'),cx=cv.getContext('2d'),W=16,H=10,S=40;
+const OB=[[3,1,4,2,'Диван','#7a5c8a'],[9,4,3,3,'Стол','#9a7040'],[1,5,1,2,'Тумба','#6b7a8a'],[13,1,2,2,'Кресло','#5c8a6e'],[6,7,3,1,'Пуф','#8a6a5c']];
+const blk=Array.from({length:H},()=>Array(W).fill(false));
+OB.forEach(([x,y,w,h])=>{for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)blk[j][i]=true});
+const DX=0,DY=9,CLR={off:'#666',diag:'#f5c518',rdy:'#2ecc71',clean:'#3b82f6',pause:'#f59e0b',done:'#38bdf8',ret:'#a855f7',chg:'#2ecc71',err:'#ef4444'};
+const N={off:'Выключено',diag:'Диагностика',rdy:'Готовность',clean:'Уборка',pause:'Пауза',done:'Завершение задания',ret:'Возвращение на станцию',chg:'Зарядка',err:'Ошибка'};
+let cur='off',bat=80,cont=20,prog=0,tm=0,nfT=0,dirty,total,nClean,err=null,flash='',flashT=0,sndTxt='';
+function resetDirty(){dirty=blk.map(r=>r.map(b=>!b));total=dirty.flat().filter(Boolean).length;nClean=0;prog=0}resetDirty();
+const R={x:DX*S+S/2,y:DY*S+S/2,a:-Math.PI/2,path:[]};
+const cell=()=>[Math.floor(R.x/S),Math.floor(R.y/S)];
+function bfs(goal){const[sx,sy]=cell(),prev={},q=[[sx,sy]];prev[sx+','+sy]=null;
+while(q.length){const[x,y]=q.shift();if(goal(x,y)){const p=[];let k=x+','+y;while(prev[k]!==null){p.unshift(k.split(',').map(Number));k=prev[k]}return p}
+for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H||blk[ny][nx]||((nx+','+ny)in prev))continue;prev[nx+','+ny]=x+','+y;q.push([nx,ny])}}return null}
+function arrive(x,y){if(cur=='clean'&&dirty[y][x]){dirty[y][x]=false;nClean++;prog=nClean/total*100;cont=Math.min(100,cont+.5)}}
+function move(dt){let d=130*dt;while(d>0&&R.path.length){const[tx,ty]=R.path[0],px=tx*S+S/2,py=ty*S+S/2,dx=px-R.x,dy=py-R.y,L=Math.hypot(dx,dy);
+let da=Math.atan2(dy,dx)-R.a;da=Math.atan2(Math.sin(da),Math.cos(da));R.a+=da*Math.min(1,dt*14);
+if(L<=d){R.x=px;R.y=py;d-=L;R.path.shift();arrive(tx,ty)}else{R.x+=dx/L*d;R.y+=dy/L*d;d=0}}}
+// ---- переходы (из диаграммы) ----
+const okS=()=>bat<=10?'заряд ≤ 10%':cont>=100?'контейнер заполнен (100%)':null;
+const T=[
+{id:'on',f:'off',t:'diag',l:'команда «Включение»',b:'L',s:'Система включена',cmd:'Включение'},
+{id:'off1',f:'diag',t:'off',l:'команда «Выключение»',b:'S',s:'Система выключена',cmd:'Выключение'},
+{id:'off2',f:'rdy',t:'off',l:'команда «Выключение»',b:'S',s:'Система выключена',cmd:'Выключение'},
+{id:'off3',f:'err',t:'off',l:'команда «Выключение»',b:'S',s:'Система выключена',cmd:'Выключение'},
+{id:'dok',f:'diag',t:'rdy',l:'самодиагностика пройдена',b:'',s:''},
+{id:'derr',f:'diag',t:'err',l:'ошибка диагностики',b:'LLLL',s:'Ошибка запуска',m:['E01','Ошибка запуска: сбой диагностики']},
+{id:'start',f:'rdy',t:'clean',l:'команда «Старт» [заряд>10%, контейнер<100%, нет ошибок]',b:'S',s:'Уборка начата',cmd:'Старт',g:okS},
+{id:'ret1',f:'rdy',t:'ret',l:'команда «Возврат» / запуск',b:'SS',s:'Возврат',cmd:'Возврат'},
+{id:'cerr1',f:'rdy',t:'err',l:'крит. ошибка',b:'LLL',s:'код ошибки',m:['E02','Критическая ошибка'],e:1},
+{id:'pause',f:'clean',t:'pause',l:'команда «Пауза» / остановка',b:'SS',s:'Приостановлено',cmd:'Пауза'},
+{id:'cont',f:'pause',t:'clean',l:'команда «Продолжить» [нет препятствий] / возобновление',b:'S',s:'Продолжено',cmd:'Продолжить',g:()=>$('k2').checked?'на пути препятствие':null},
+{id:'fin',f:'clean',t:'done',l:'окончание уборки / остановка',b:'S',s:'Уборка завершена'},
+{id:'crit',f:'clean',t:'ret',l:'заряд ≤ 10% (критический)',b:'LLL',s:'Крит. заряд'},
+{id:'ret2',f:'clean',t:'ret',l:'команда «Возврат»',b:'SS',s:'Возврат',cmd:'Возврат'},
+{id:'estop',f:'clean',t:'err',l:'экстренная остановка',b:'C',s:'Стоп!',m:['E00','ЭКСТРЕННАЯ ОСТАНОВКА']},
+{id:'cerr2',f:'clean',t:'err',l:'крит. ошибка',b:'LLL',s:'код ошибки',m:['E02','Критическая ошибка'],e:1},
+{id:'dn1',f:'done',t:'rdy',l:'задание завершено / сохранение',b:'S',s:'Выполнено'},
+{id:'dn2',f:'done',t:'ret',l:'автовозврат [заряд<20%]',b:'SS',s:'Возврат'},
+{id:'fnd',f:'ret',t:'chg',l:'станция найдена и подключена',b:'S',s:'Зарядка начата'},
+{id:'nf',f:'ret',t:'err',l:'станция не найдена за 60 с / остановка',b:'LLL',s:'Ошибка станции',m:['E03','Станция не найдена за 60 с']},
+{id:'full',f:'chg',t:'rdy',l:'заряд 100% / завершение',b:'S',s:'Зарядка завершена'}];
+const byId=Object.fromEntries(T.map(t=>[t.id,t]));
+const find=fn=>T.find(t=>t.f==cur&&fn(t));
+const logf=s=>{const d=document.createElement('div');d.textContent=new Date().toLocaleTimeString('ru')+' — '+s;$('log').prepend(d)};
+const bt=b=>b=='C'?'непрерывный':b.length+(b[0]=='S'?' коротк.':' длинн.');
+// ---- звук ----
+let ac,q=Promise.resolve();const sl=ms=>new Promise(r=>setTimeout(r,ms));
+function beep(p,txt){if(!p){return}sndTxt='Сигнал: '+bt(p)+' ('+txt+')';$('snd').textContent=sndTxt;
+q=q.then(async()=>{for(const x of p){const d=x=='S'?130:x=='L'?520:1500;
+if($('sound').checked){try{ac=ac||new AudioContext();const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=x=='L'?440:880;g.gain.value=.07;o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d/1000)}catch(e){}}
+$('lamp').classList.add('b');await sl(d);$('lamp').classList.remove('b');await sl(150)}})}
+function fire(t){if(t.f!=cur)return;const r=t.g&&t.g();
+if(r){flash='Нельзя: '+r;flashT=3;$('hint').textContent=flash;logf('✖ «'+t.l+'» отклонено: '+r);return}
+if(cur=='clean')logf('exit: остановлены приводы и двигатель');
+logf(`${N[t.f]} → ${N[t.t]}: ${t.l}`+(t.b?` · 🔊 ${bt(t.b)} (${t.s})`:''));
+if(t.id=='start'&&prog>=100)resetDirty();
+cur=t.t;tm=0;nfT=0;R.path=[];err=t.m||null;flash='';$('hint').textContent='';beep(t.b,t.s);
+if(cur=='clean')logf('entry: включены двигатель и приводы');
+if(cur=='chg'){R.x=DX*S+S/2;R.y=DY*S+S/2;R.a=-Math.PI/2}
+render()}
+function tick(dt){tm+=dt;
+if(cur=='diag'&&tm>=2)fire($('k1').checked?byId.derr:byId.dok);
+if(cur=='clean'){bat-=.6*dt;const[cxx,cyy]=cell();arrive(cxx,cyy);
+if(bat<=10)fire(byId.crit);else if(prog>=100||cont>=100)fire(byId.fin);
+else{if(!R.path.length){const p=bfs((x,y)=>dirty[y][x]);if(p)R.path=p;else fire(byId.fin)}move(dt)}}
+if(cur=='done'&&tm>=1.5)fire(bat<20?byId.dn2:byId.dn1);
+if(cur=='ret'){bat-=.2*dt;
+if($('k3').checked){if(!R.path.length){const[x,y]=cell();if(x==DX&&y==DY)fire(byId.fnd);else R.path=bfs((a,b)=>a==DX&&b==DY)||[]}move(dt)}
+else{nfT+=dt;if(nfT*5>=60)fire(byId.nf);else{if(!R.path.length){let a,b;do{a=Math.random()*W|0;b=Math.random()*H|0}while(blk[b][a]);R.path=bfs((x,y)=>x==a&&y==b)||[]}move(dt)}}}
+if(cur=='chg'){bat+=5*dt;if(bat>=100){bat=100;fire(byId.full)}}
+if(flashT>0){flashT-=dt;if(flashT<=0)flash=''}
+bat=Math.max(0,Math.min(100,bat));$('k4').value=bat;$('k5').value=cont;render()}
+// ---- экран ----
+function render(){const l=$('lcd');let t='',s='',on=cur!='off';
+if(cur=='diag'){t='САМОТЕСТ';s='проверка систем'+'.'.repeat(1+(tm*2|0)%3)}
+else if(cur=='rdy'){t='ГОТОВ';s='Нажмите «Старт» на пульте'}
+else if(cur=='clean'){t='УБОРКА';s='Убрано: '+Math.round(prog)+'%'}
+else if(cur=='pause'){t='ПАУЗА';s='Нажмите «Продолжить»'}
+else if(cur=='done'){t='ЗАДАНИЕ ЗАВЕРШЕНО';s='Сохранение…'}
+else if(cur=='ret'){t='ВОЗВРАТ НА СТАНЦИЮ';s=$('k3').checked?'Движение к станции…':'Поиск станции: '+Math.max(0,60-Math.floor(nfT*5))+' с'}
+else if(cur=='chg'){t='ЗАРЯДКА';s='Подключено к станции'}
+else if(cur=='err'){t='ОШИБКА '+err[0];s=err[1]}
+l.className='lcd'+(cur=='off'?' off':cur=='err'?' er':'');
+l.innerHTML=on?`<div class="t">${t}</div><div class="s">${s}</div><div class="b">🔋<div class="bt"><i style="width:${bat}%"></i></div>${Math.round(bat)}%</div><div class="b" style="margin-top:4px">🗑<div class="bt"><i style="width:${cont}%"></i></div>${Math.round(cont)}%</div><div class="f">${flash}</div>`:'';
+document.querySelectorAll('#rc button').forEach(b=>{b.disabled=!find(x=>x.cmd==b.dataset.c)});
+$('e1').disabled=cur!='clean';$('e2').disabled=!T.some(t=>t.f==cur&&t.e);
+$('v4').textContent=Math.round(bat)+'%';$('v5').textContent=Math.round(cont)+'%'}
+[['Включение','g'],['Выключение','r'],['Старт','g'],['Пауза','y'],['Продолжить',''],['Возврат','w']].forEach(([c,k])=>{const b=document.createElement('button');b.textContent=c=='Возврат'?'Возврат на станцию':c;b.dataset.c=c;b.className=k;b.onclick=()=>{const t=find(x=>x.cmd==c);t&&fire(t)};$('rc').append(b)});
+$('e1').onclick=()=>fire(byId.estop);$('e2').onclick=()=>{const t=find(x=>x.e);t&&fire(t)};
+$('k4').oninput=e=>{bat=+e.target.value;render()};$('k5').oninput=e=>{cont=+e.target.value;render()};
+$('k3').onchange=render;
+// ---- рисование ----
+function draw(now){cx.fillStyle='#d9c7a8';cx.fillRect(0,0,640,400);
+cx.strokeStyle='#cdb892';for(let i=1;i<10;i++){cx.beginPath();cx.moveTo(0,i*S);cx.lineTo(640,i*S);cx.stroke()}
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(blk[y][x])continue;
+if(dirty[y][x]){cx.fillStyle='#6b5a45';for(let k=0;k<4;k++){cx.beginPath();cx.arc(x*S+4+((x*7+y*13+k*11)%8)*4.2,y*S+4+((x*5+y*3+k*17)%8)*4.2,1.8,0,7);cx.fill()}}
+else{cx.fillStyle='rgba(255,255,255,.3)';cx.fillRect(x*S,y*S,S,S)}}
+OB.forEach(([x,y,w,h,n,c])=>{cx.fillStyle=c;cx.beginPath();cx.roundRect(x*S+2,y*S+2,w*S-4,h*S-4,8);cx.fill();cx.fillStyle='#fff';cx.font='12px sans-serif';cx.textAlign='center';cx.fillText(n,(x+w/2)*S,(y+h/2)*S+4)});
+// станция
+cx.fillStyle='#2d3748';cx.beginPath();cx.roundRect(DX*S+1,DY*S+3,S-2,S-6,6);cx.fill();cx.fillStyle=cur=='chg'?'#4ade80':'#718096';cx.font='16px sans-serif';cx.textAlign='center';cx.fillText('⚡',DX*S+S/2,DY*S+S/2+6);
+// робот
+cx.save();cx.translate(R.x,R.y);cx.fillStyle='rgba(0,0,0,.2)';cx.beginPath();cx.arc(2,3,17,0,7);cx.fill();
+cx.rotate(R.a);cx.fillStyle='#f4f6fa';cx.strokeStyle='#8892a6';cx.lineWidth=1.5;cx.beginPath();cx.arc(0,0,17,0,7);cx.fill();cx.stroke();
+const bl=(cur=='chg'||cur=='err')?.5+.5*Math.sin(now/200):1;cx.globalAlpha=cur=='off'?.4:bl;cx.strokeStyle=CLR[cur];cx.lineWidth=3;cx.beginPath();cx.arc(0,0,13,0,7);cx.stroke();cx.globalAlpha=1;
+cx.fillStyle='#2d3748';cx.beginPath();cx.arc(0,0,5,0,7);cx.fill();cx.fillRect(12,-3,6,6);
+if(cur=='clean'||cur=='ret'&&R.path.length){cx.strokeStyle='#e11d48';cx.lineWidth=2;const a=now/60;cx.beginPath();cx.moveTo(14,-14);cx.lineTo(14+6*Math.cos(a),-14+6*Math.sin(a));cx.moveTo(14,-14);cx.lineTo(14-6*Math.cos(a),-14-6*Math.sin(a));cx.stroke()}
+cx.restore();
+if($('k2').checked&&cur!='off'){const fx=R.x+Math.cos(R.a)*34,fy=R.y+Math.sin(R.a)*34;cx.font='22px sans-serif';cx.textAlign='center';cx.fillText('🚧',fx,fy+8)}
+requestAnimationFrame(draw)}
+render();requestAnimationFrame(draw);let pt=performance.now();
+setInterval(()=>{const n=performance.now();tick(Math.min(.2,(n-pt)/1000));pt=n},50);
+</script></body></html>
